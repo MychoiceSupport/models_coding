@@ -30,8 +30,8 @@ class Guide_diff(nn.Module):
 
     def batch_deal(self, batch):
         (_, _, delta_feature, time_feature) = batch
-        # shape0 = time_feature.shape[0]
-        # shape1 = time_feature.shape[1]
+        shape0 = time_feature.shape[0]
+        shape1 = time_feature.shape[1]
         delta_feature = self.time_encoder(delta_feature).to(self.device)
         time_feature_0 = self.start_encoder(time_feature[0].reshape(-1, )).reshape(shape0, shape1, -1)
         time_feature_1 = self.end_encoder(time_feature[1].reshape(-1, )).reshape(shape0, shape1, -1)

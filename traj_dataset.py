@@ -13,7 +13,7 @@ import sklearn
 # from utils import *
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
-def generate_raw_data(file_name,i):
+def pre_generate_raw_data(file_name,i):
     with open('data/{}'.format(file_name),'r') as f:
         all_data = json.load(f)
     """
@@ -60,6 +60,50 @@ def generate_raw_data(file_name,i):
     np.save('data/all_data_y_origin_{}.npy'.format(i),Y)
     # print("查看构造的数据的形状:",X.shape, Y.shape)  ###generate_raw_data
     del X,Y,dis,all_data
+
+def generate_raw_data(file_name,i):
+    with open('data/{}'.format(file_name),'r') as f:
+        all_data = np.array(json.load(f))
+    # print(all_data[0])
+    """
+    data中的字段:
+        -laccell:基站ID
+        -latitude:基站纬度
+        -longtitude：基站精度
+        -procedureStartTime: 进入时间
+        -procedureEndTime:离开时间
+    目前按照每个用户的序列长度为11进行金酸
+        感觉停留时间也可以作为特征：
+        - deltatime:停留时间
+    """
+    data_traj = np.array([data['P'] for data in all_data]).squeeze()
+    all_data_raw_label = [data['Y'] for data in all_data]
+    data_after_label = [[np.float64(data_raw_label['x']), np.float64(data_raw_label['y'])] for data_raw_label in all_data_raw_label]
+    data_id = [data['f']['imsi'] for data in all_data]
+
+    #print(traj_point)
+    print(data_traj[0])
+    laccell = np.array([np.array(traj_point['laccell'].values()) for traj_point in data_traj]).squeeze()
+    start_time = np.array([pd.to_datetime(traj_point['procedureStartTime'].values(), format='%Y-%m-%d %H:%M:%S') for traj_point in data_traj]).squeeze()
+    end_time = np.array([pd.to_datetime(traj_point['procedureEndTime'].values(), format='%Y-%m-%d %H:%M:%S') for traj_point in data_traj]).squeeze()
+    start_time = pd.to_datetime(start_time, unit='s')
+    end_time = pd.to_datetime(end_time, unit='s')
+    latitude = np.array([np.array(traj_point['latitude'].values()) for traj_point in data_traj]).squeeze()
+    longtitude = np.array([np.array(traj_point['longtitude'].values()) for traj_point in data_traj]).squeeze()
+            # dis[i].append(geodesic([latitude, longtitude], data_after_label))
+    delta_time = (end_time - start_time).value/ pd.Timedelta(24,unit='H').value
+            #print("查看delta_time:",delta_time.value)
+            # print("查看当前delta_time:", delta_time)
+    X = np.concatenate((latitude, longtitude, laccell, delta_time, start_time, end_time, data_id), axis = -1)
+        # print(np.mean(dis))
+    # for j in range(11):
+    #     print("最后的结果是:",j, np.mean(dis[i]))
+    X = np.array(X)
+    Y = np.array(data_after_label)
+    np.save('data/all_data_X_origin_{}.npy'.format(i),X)
+    np.save('data/all_data_y_origin_{}.npy'.format(i),Y)
+    # print("查看构造的数据的形状:",X.shape, Y.shape)  ###generate_raw_data
+    del X, Y, data
 
 
 class MinMaxScaler():
