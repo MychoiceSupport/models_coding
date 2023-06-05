@@ -152,6 +152,12 @@ def train(model, args, config, train_loader, val_loader, test_loader, scaler=Non
                         'epoch': epoch, },
                     refresh=False,
                 )
+                for name, param in model.named_parameters():
+                    if param.grad is None:
+                        print("这个没有梯度请注意：",name)
+                    else:
+                        print(f'{name}_grad', torch.mean(param.grad), torch.std(param.grad))
+                        print(f'{name}_weight', torch.mean(param), torch.std(param))
                 optimizer.step()
             all_prediction = torch.cat(all_prediction, dim=0)
             all_eval_points = torch.cat(all_eval_points, dim=0)

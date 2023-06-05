@@ -23,7 +23,7 @@ class Guide_diff(nn.Module):
         nn.init.zeros_(self.output_projection.weight)
         self.fcEmbedding = nn.Linear(self.input_dim, self.channels)
         self.time_linear = nn.Linear(self.seq_len * self.output_dim, self.output_dim)
-        self.time_encoder = DeltaEncoder(dimension=args.dimension)
+        self.time_encoder = DeltaEncoder(dimension=args.dimension, device=self.device)
         self.start_encoder = SemanticEncoder(dimension=args.dimension, device=self.device)
         self.end_encoder = SemanticEncoder(dimension=args.dimension, device=self.device)
         self.layers = args.layers
@@ -33,13 +33,23 @@ class Guide_diff(nn.Module):
         shape0 = time_feature.shape[0]
         shape1 = time_feature.shape[1]
         delta_feature = self.time_encoder(delta_feature).to(self.device)
-        time_feature_0 = self.start_encoder(time_feature[0].reshape(-1, )).reshape(shape0, shape1, -1)
-        time_feature_1 = self.end_encoder(time_feature[1].reshape(-1, )).reshape(shape0, shape1, -1)
-        new_time_feature = torch.cat([time_feature_0, time_feature_1], dim=-1)
+        time_feature = time_feature.reshape(-1,2).cpu().numpy()
+        start_time = pd.to_datetime(time_feature[:,0], unit='s')
+        end_time = pd.to_datetime(time_feature[:,1], unit='s')
+        week, day, month, hour = start_time.weekday.values.reshape(shape0, shape1), start_time.day.values.reshape(shape0, shape1), \
+                                 start_time.month.values.reshape(shape0, shape1), start_time.hour.values.reshape(shape0, shape1)
+        start_feature = self.start_encoder(week,day,month,hour).to(self.device)
+        week, day, month, hour = end_time.weekday.values.reshape(shape0, shape1), end_time.day.values.reshape(shape0, shape1), \
+                                 end_time.month.values.reshape(shape0, shape1), end_time.hour.values.reshape(shape0, shape1)
+        end_feature = self.end_encoder(week,day,month,hour).to(self.device)
+        # time_feature_0 = self.start_encoder(time_feature[0].reshape(-1, )).reshape(shape0, shape1, -1).to(self.device)
+        # time_feature_1 = self.end_encoder(time_feature[1].reshape(-1, )).reshape(shape0, shape1, -1).to(self.device)
+        new_time_feature = torch.cat([start_feature, end_feature], dim=-1).to(self.device)
         return delta_feature, new_time_feature
 
     def process_data(self, batch):
         (x, ground_truth, delta_feature, time_feature) = batch
+        delta_feature, time_feature = self.batch_deal(batch)
         # ground_truth_data = ground_truth_data.cuda().to(self.device).float()
         # if extra_feature != None:
         #     extra_feature = extra_feature.cuda().to(self.device).float()
@@ -157,10 +167,11 @@ class GRU(Guide_diff):
 
     def forward(self, batch):
         (x, _, time_delta, time_feature) = self.process_data(batch)
-        # time_delta, time_start_end = self.batch_deal(batch)
+        time_delta, time_feature= self.batch_deal(batch)
         # x = x.permute(0, 2, 1)  ##B,2,L
         # print("查看特征:",x.shape, time_feature.shape)
         # x = self.fcEmbedding(x)
+        print(time_feature.shape)
         x = torch.cat([x, time_feature], dim=-1)
         # print(x)
         x = x.to(self.device)
