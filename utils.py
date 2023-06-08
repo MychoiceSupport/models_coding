@@ -7,7 +7,6 @@ from torch.optim import Adam
 import pickle
 from tqdm import tqdm
 import torch.nn as nn
-import os
 
 EARTH_RADIUS = 6371393  # 地球平均半径，6371km
 
@@ -30,50 +29,6 @@ def geodesic(pos1, pos2):
         lat0) * torch.cos(lat1)
     distance = 2 * EARTH_RADIUS * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a))
     return distance
-
-
-class EarlyStopping:
-    def __init__(self,save_path, patience = 10, verbose=False, delta = 0):
-        '''
-
-        :param patience:
-        :param verbose:
-        :param delta:
-        '''
-        self.save_path = save_path
-        self.patience = patience
-        self.verbose = verbose
-        self.counter = 0
-        self.best_score = None
-        self.early_stop = False
-        self.val_loss_min = np.Inf
-        self.delta = delta
-
-    def __call__(self, val_loss, model):
-
-        score = -val_loss
-
-        if self.best_score is None:
-            self.best_score = score
-            self.save_checkpoint(val_loss, model)
-        elif score < self.best_score + self.delta:
-            self.counter += 1
-            print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
-            if self.counter >= self.patience:
-                self.early_stop = True
-        else:
-            self.best_score = score
-            self.save_checkpoint(val_loss, model)
-            self.counter = 0
-
-    def save_checkpoint(self, val_loss, model):
-        '''Saves model when validation loss decrease.'''
-        if self.verbose:
-            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
-        path = os.path.join(self.save_path, 'model.pth')
-        torch.save(model.state_dict(), path)  # 这里会存储迄今最优模型的参数
-        self.val_loss_min = val_loss
-
 
 
 def pre_get_metrics(x, y):
@@ -119,7 +74,7 @@ def train(model, args, config, train_loader, val_loader, test_loader, scaler=Non
         p1 = int(0.75 * config["epochs"])
         p2 = int(0.9 * config["epochs"])
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-            optimizer, milestones=[p1, p2], gamma=0.1
+            optimizer, milestones=[p1, p2], gamma=args.gamma
         )
 
     best_valid_loss = 1e10
@@ -132,7 +87,7 @@ def train(model, args, config, train_loader, val_loader, test_loader, scaler=Non
         all_prediction = []
         with tqdm(train_loader, mininterval=5.0, maxinterval=50.0) as it:
             for batch, data in enumerate(it, start=1):
-                (_, ground_truth, _, _) = data
+                (_, ground_truth, _, _, _) = data
                 ground_truth = ground_truth.cuda()
                 optimizer.zero_grad()
                 prediction = model(data)
@@ -152,12 +107,6 @@ def train(model, args, config, train_loader, val_loader, test_loader, scaler=Non
                         'epoch': epoch, },
                     refresh=False,
                 )
-                for name, param in model.named_parameters():
-                    if param.grad is None:
-                        print("这个没有梯度请注意：",name)
-                    else:
-                        print(f'{name}_grad', torch.mean(param.grad), torch.std(param.grad))
-                        print(f'{name}_weight', torch.mean(param), torch.std(param))
                 optimizer.step()
             all_prediction = torch.cat(all_prediction, dim=0)
             all_eval_points = torch.cat(all_eval_points, dim=0)
@@ -175,7 +124,7 @@ def train(model, args, config, train_loader, val_loader, test_loader, scaler=Non
                 for batch, data in enumerate(it, start=1):
                     with torch.no_grad():
                         optimizer.zero_grad()
-                        _, ground_truth, _, _ = data
+                        _, ground_truth, _, _, _ = data
                         ground_truth = ground_truth.cuda()
                         prediction = model(data)
                         prediction = scaler.inverse_transform(prediction).cuda()
@@ -206,16 +155,6 @@ def train(model, args, config, train_loader, val_loader, test_loader, scaler=Non
                 if foldername != '':
                     torch.save(model.state_dict(), output_path)
 
-    if best_valid_loss > avg_loss_valid:
-        best_valid_loss = avg_loss_valid
-        print(
-            "\n best loss is updated to ",
-            best_valid_loss / batch,
-            "at",
-            epoch,
-        )
-        logging.info("best loss is updated to " + str(avg_loss_valid / batch) + " at " + str(epoch))
-
     evaluate(model, test_loader, scaler, foldername)
 
 
@@ -233,7 +172,7 @@ def evaluate(model, test_loader, scaler, foldername=""):
             for batch_no, test_batch in enumerate(it, start=1):
                 output = model(test_batch)
                 predict = scaler.inverse_transform(output).cuda()
-                (_, groundTruth, _, _) = test_batch
+                (_, groundTruth, _, _, _) = test_batch
                 groundTruth = groundTruth.cuda()
                 # groundTruth = scaler.inverse_transform(groundTruth)
                 all_observed_point.append(groundTruth)
